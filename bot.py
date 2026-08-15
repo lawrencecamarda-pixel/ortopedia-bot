@@ -122,11 +122,15 @@ def index_pdf_books(folder_path: str, force_reindex: bool = False):
 HIGH_SPECIFICITY_TERMS = {
     "spine": ["tibial spine", "intercondylar eminence", "tibial eminence", "meyers", "mckeever", "spine"],
     "spina": ["tibial spine", "intercondylar eminence", "tibial eminence", "meyers", "mckeever"],
+    "condilo": ["femoral condyle", "condylar", "distal femur", "supracondylar", "intercondylar", "condyle"],
+    "condili": ["femoral condyles", "condylar", "distal femur", "supracondylar", "intercondylar", "condyles"],
+    "condilari": ["condylar", "distal femur", "supracondylar"],
     "eminematica": ["intercondylar eminence", "tibial eminence"],
     "meyers": ["meyers", "mckeever"],
     "mckeever": ["mckeever", "meyers"],
     "collo": ["femoral neck", "neck fracture", "pauwels", "garden"],
-    "femore": ["femur", "femoral", "femoral neck"],
+    "femore": ["femur", "femoral", "femoral neck", "distal femur"],
+    "femorale": ["femoral", "femur", "distal femur", "femoral condyle"],
     "piatto": ["tibial plateau", "schatzker", "plateau fracture"],
     "pilon": ["pilon", "plafond"],
     "gustilo": ["gustilo", "anderson"],
@@ -137,7 +141,20 @@ HIGH_SPECIFICITY_TERMS = {
     "menisco": ["meniscus", "meniscal", "root tear"],
     "root": ["root tear", "meniscal root"],
     "rotula": ["patella", "patellar"],
-    "lfpb": ["mpfl", "patellofemoral"]
+    "lfpb": ["mpfl", "patellofemoral"],
+    "sovracondilica": ["supracondylar", "distal femur"],
+    "diapisi": ["diaphysis", "shaft", "diaphyseal"],
+    "diafisaria": ["diaphysis", "shaft", "diaphyseal"],
+    "metafisi": ["metaphysis", "metaphyseal"],
+    "cotile": ["acetabulum", "acetabular"],
+    "acetabolo": ["acetabulum", "acetabular"],
+    "malleolo": ["malleolus", "malleolar", "bimalleolar", "trimalleolar"],
+    "calcagno": ["calcaneus", "calcaneal"],
+    "astragalo": ["talus", "talar"],
+    "scapola": ["scapula", "scapular"],
+    "clavicola": ["clavicle", "clavicular"],
+    "capitello": ["radial head"],
+    "olecrano": ["olecranon"]
 }
 
 def search_relevant_chunks(query: str, top_k: int = 8) -> List[Dict]:
