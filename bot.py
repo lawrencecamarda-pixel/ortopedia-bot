@@ -20,7 +20,7 @@ from pypdf import PdfReader
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "GEMINI").upper()  # OPENAI, DEEPSEEK, GEMINI, OPENROUTER
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OPENAI").upper()  # OPENAI, DEEPSEEK, GEMINI, OPENROUTER
 API_KEY = os.getenv("API_KEY", "")
 BOOKS_DIR = os.getenv("BOOKS_DIR", "./books")
 CACHE_FILE = "library_index.pkl"
@@ -119,46 +119,115 @@ def index_pdf_books(folder_path: str, force_reindex: bool = False):
     except Exception as e:
         logger.error(f"Errore salvataggio cache: {e}")
 
+# DIZIONARIO MEDICO ORTOPEDICO E TRAUMATOLOGICO COMPLETO BILINGUE (ITALIANO <-> INGLESE)
 HIGH_SPECIFICITY_TERMS = {
-    "spine": ["tibial spine", "intercondylar eminence", "tibial eminence", "meyers", "mckeever", "spine"],
-    "spina": ["tibial spine", "intercondylar eminence", "tibial eminence", "meyers", "mckeever"],
+    # --- FEMORE E ANCA ---
+    "femore": ["femur", "femoral", "femoral neck", "distal femur", "proximal femur", "shaft"],
+    "femorale": ["femoral", "femur", "distal femur", "femoral condyle", "femoral neck"],
+    "femorali": ["femoral", "femur", "condyles"],
+    "collo": ["femoral neck", "neck fracture", "pauwels", "garden"],
+    "trocantere": ["trochanter", "trochanteric", "intertrochanteric", "subtrochanteric"],
+    "pertrocanterica": ["intertrochanteric", "pertrochanteric", "trochanteric"],
+    "sottotrocanterica": ["subtrochanteric"],
     "condilo": ["femoral condyle", "condylar", "distal femur", "supracondylar", "intercondylar", "condyle"],
     "condili": ["femoral condyles", "condylar", "distal femur", "supracondylar", "intercondylar", "condyles"],
+    "condilare": ["condylar", "distal femur", "supracondylar"],
     "condilari": ["condylar", "distal femur", "supracondylar"],
-    "eminematica": ["intercondylar eminence", "tibial eminence"],
-    "meyers": ["meyers", "mckeever"],
-    "mckeever": ["mckeever", "meyers"],
-    "collo": ["femoral neck", "neck fracture", "pauwels", "garden"],
-    "femore": ["femur", "femoral", "femoral neck", "distal femur"],
-    "femorale": ["femoral", "femur", "distal femur", "femoral condyle"],
+    "sovracondilica": ["supracondylar", "distal femur"],
+    "supracondiloidea": ["supracondylar", "distal femur"],
+    "anca": ["hip", "hip joint", "femoral head", "arthroplasty"],
+    "testa": ["femoral head", "head fracture", "pipkin"],
+    "cotile": ["acetabulum", "acetabular", "judet", "letournel"],
+    "acetabolo": ["acetabulum", "acetabular", "judet", "letournel"],
+    "bacino": ["pelvis", "pelvic", "pelvic ring", "tile", "young-burgess"],
+
+    # --- TIBIA, PERONE E GINOCCHIO ---
+    "tibia": ["tibia", "tibial", "tibial shaft", "distal tibia", "proximal tibia"],
+    "tibiale": ["tibial", "tibia", "tibial plateau", "tibial spine", "tibial shaft"],
+    "tibiali": ["tibial", "tibia", "plateau", "spines"],
     "piatto": ["tibial plateau", "schatzker", "plateau fracture"],
-    "pilon": ["pilon", "plafond"],
-    "gustilo": ["gustilo", "anderson"],
-    "esposta": ["open fracture", "gustilo"],
-    "esposte": ["open fractures", "gustilo"],
+    "pilon": ["pilon", "plafond", "distal tibia"],
+    "spine": ["tibial spine", "intercondylar eminence", "tibial eminence", "meyers", "mckeever", "spine"],
+    "spina": ["tibial spine", "intercondylar eminence", "tibial eminence", "meyers", "mckeever"],
+    "eminematica": ["intercondylar eminence", "tibial eminence"],
+    "tuberosita": ["tuberosity", "tibial tubercle"],
+    "perone": ["fibula", "fibular", "fibular head", "lateral malleolus"],
+    "fibula": ["fibula", "fibular", "malleolus"],
+    "ginocchio": ["knee", "patella", "patellar", "extensor mechanism", "acl", "pcl"],
+    "rotula": ["patella", "patellar", "extensor mechanism"],
+    "patella": ["patella", "patellar"],
     "lca": ["acl", "anterior cruciate"],
     "lcp": ["pcl", "posterior cruciate"],
-    "menisco": ["meniscus", "meniscal", "root tear"],
+    "menisco": ["meniscus", "meniscal", "root tear", "bucket handle"],
+    "meniscale": ["meniscus", "meniscal", "root tear"],
+    "menischi": ["meniscus", "meniscal"],
     "root": ["root tear", "meniscal root"],
-    "rotula": ["patella", "patellar"],
     "lfpb": ["mpfl", "patellofemoral"],
-    "sovracondilica": ["supracondylar", "distal femur"],
-    "diapisi": ["diaphysis", "shaft", "diaphyseal"],
+
+    # --- CAVIGLIA E PIEDE ---
+    "caviglia": ["ankle", "malleolar", "lauge-hansen", "weber"],
+    "malleolo": ["malleolus", "malleolar", "bimalleolar", "trimalleolar", "weber"],
+    "malleolare": ["malleolus", "malleolar", "weber"],
+    "malleoli": ["malleoli", "malleolar"],
+    "calcagno": ["calcaneus", "calcaneal", "sanders"],
+    "astragalo": ["talus", "talar", "hawkins"],
+    "lisfranc": ["lisfranc", "tarsometatarsal"],
+    "chopart": ["chopart", "midtarsal"],
+    "metatarso": ["metatarsal", "forefoot"],
+
+    # --- SPALLA E ARTO SUPERIORE ---
+    "spalla": ["shoulder", "glenohumeral", "rotator cuff", "bankart", "hill-sachs"],
+    "omero": ["humerus", "humeral", "proximal humerus", "humeral shaft", "distal humerus"],
+    "omerale": ["humeral", "humerus", "proximal humerus"],
+    "scapola": ["scapula", "scapular", "glenoid"],
+    "glena": ["glenoid", "glenoid fossa"],
+    "clavicola": ["clavicle", "clavicular", "acromioclavicular"],
+    "cuffia": ["rotator cuff", "supraspinatus"],
+    "gomito": ["elbow", "olecranon", "radial head", "coronoid"],
+    "olecrano": ["olecranon"],
+    "capitello": ["radial head", "mason"],
+    "radio": ["radius", "radial", "distal radius", "radial head", "shaft"],
+    "radiale": ["radial", "radius", "distal radius"],
+    "ulna": ["ulna", "ulnar", "olecranon"],
+    "polso": ["wrist", "distal radius", "scaphoid", "cooney", "fernandez"],
+    "scafoide": ["scaphoid", "carpal scaphoid"],
+    "carpo": ["carpus", "carpal"],
+    "metacarpo": ["metacarpal", "hand"],
+
+    # --- RACHIDE E COLONNA ---
+    "colonna": ["spine", "spinal", "vertebra", "vertebral"],
+    "rachide": ["spine", "spinal", "vertebral"],
+    "cervicale": ["cervical", "cervical spine"],
+    "dorsale": ["thoracic", "thoracic spine"],
+    "lombare": ["lumbar", "lumbar spine"],
+    "sacro": ["sacrum", "sacral", "sacroiliac"],
+
+    # --- TIPI DI FRATTURA E CLASSIFICAZIONI ---
+    "frattura": ["fracture", "fractures", "broken"],
+    "fratture": ["fracture", "fractures"],
+    "esposta": ["open fracture", "gustilo", "anderson"],
+    "esposte": ["open fractures", "gustilo"],
+    "scomposta": ["displaced", "displacement"],
+    "comminuta": ["comminuted", "comminution"],
+    "articolare": ["articular", "intra-articular"],
+    "diafisi": ["diaphysis", "shaft", "diaphyseal"],
     "diafisaria": ["diaphysis", "shaft", "diaphyseal"],
     "metafisi": ["metaphysis", "metaphyseal"],
-    "cotile": ["acetabulum", "acetabular"],
-    "acetabolo": ["acetabulum", "acetabular"],
-    "malleolo": ["malleolus", "malleolar", "bimalleolar", "trimalleolar"],
-    "calcagno": ["calcaneus", "calcaneal"],
-    "astragalo": ["talus", "talar"],
-    "scapola": ["scapula", "scapular"],
-    "clavicola": ["clavicle", "clavicular"],
-    "capitello": ["radial head"],
-    "olecrano": ["olecranon"]
+    "epifisi": ["epiphysis", "epiphyseal", "salter-harris"],
+    "pseudoartrosi": ["nonunion", "malunion", "pseudoarthrosis", "delayed union"],
+    "ao": ["ao", "muller", "classification"],
+    "schatzker": ["schatzker"],
+    "garden": ["garden"],
+    "pauwels": ["pauwels"],
+    "neer": ["neer"],
+    "rockwood": ["rockwood"],
+    "meyers": ["meyers", "mckeever"],
+    "mason": ["mason"],
+    "weber": ["weber", "lauge-hansen"]
 }
 
-def search_relevant_chunks(query: str, top_k: int = 8) -> List[Dict]:
-    """Algoritmo di ricerca clinica bilingue ad alta precisione con ponderazione dei termini specialistici."""
+def search_relevant_chunks(query: str, top_k: int = 10) -> List[Dict]:
+    """Algoritmo di ricerca clinica bilingue ad alta precisione con supporto a tutte le regioni ortopediche."""
     if not library_index:
         return []
     
@@ -180,17 +249,23 @@ def search_relevant_chunks(query: str, top_k: int = 8) -> List[Dict]:
             chunk_text = chunk["text"].lower()
             score = 0
             
+            # Punteggio base termini della query
             for word in query_words:
                 if len(word) > 3 and word in chunk_text:
                     score += 1
             
+            # Punteggio elevato per termini ortopedici bilingui specifici
             for spec_term in specific_keywords:
                 if spec_term in chunk_text:
-                    score += 5
+                    score += 6
             
-            if any(k in query_clean for k in ["spine", "ginocchio", "knee", "lca", "menisco"]):
-                if "insall" in book_title or "knee" in book_title:
-                    score += 4
+            # Punteggio extra se il titolo del trattato corrisponde al distretto anatomico
+            if any(k in query_clean for k in ["spine", "ginocchio", "knee", "lca", "menisco", "condilo"]):
+                if "insall" in book_title or "knee" in book_title or "brotzman" in book_title:
+                    score += 3
+            if any(k in query_clean for k in ["frattura", "fratture", "trauma", "femore", "tibia", "omero", "condilo"]):
+                if "rockwood" in book_title or "ao" in book_title or "traumatology" in book_title:
+                    score += 3
 
             if score > 0:
                 scored_chunks.append((score, chunk))
@@ -249,9 +324,9 @@ async def query_llm(prompt: str, context: str) -> str:
             err_str = str(e)
             logger.warning(f"Tentativo LLM {attempt + 1} fallito: {err_str}")
             if "429" in err_str or "quota" in err_str.lower():
-                await asyncio.sleep(4)  # Attesa rate-limit
+                await asyncio.sleep(4)
             elif attempt == 2:
-                return f"⚠️ Si è verificato un errore temporaneo nelle API di Gemini: {err_str}"
+                return f"⚠️ Si è verificato un errore temporaneo nelle API: {err_str}"
 
     return "⚠️ Impossibile ottenere risposta dal servizio AI dopo diversi tentativi."
 
@@ -260,7 +335,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "🩺 *Bot Ortopedia & Traumatologia Policlinico*\n\n"
         "Benvenuto! Il bot è collegato alla tua libreria di testi e protocolli di ortopedia.\n\n"
-        "Puoi fare domande su trattamenti, classificazioni (AO, Schatzker, Neer, Rockwood, Meyers & McKeever), indicazioni chirurgiche e riabilitative.\n\n"
+        "Puoi fare domande su trattamenti, classificazioni (AO, Schatzker, Neer, Rockwood, Garden, Pauwels, Meyers & McKeever), indicazioni chirurgiche e riabilitative.\n\n"
         "📌 *Comandi disponibili:*\n"
         "/start - Mostra questo messaggio\n"
         "/libri - Elenco dei manuali e protocolli caricati\n"
@@ -291,7 +366,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.chat.send_action("typing")
 
-    relevant_chunks = search_relevant_chunks(user_query, top_k=8)
+    relevant_chunks = search_relevant_chunks(user_query, top_k=10)
     
     if not relevant_chunks:
         context_str = "Nessun estratto trovato nei testi. Rispondi con la tua conoscenza generale ortopedica specificando che non c'è riscontro diretto nei testi della libreria."
@@ -303,13 +378,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_text = await query_llm(user_query, context_str)
 
     if relevant_chunks:
-        sources_used = sorted(list(set(f"{c['source']} (pag. {c['page']})" for c in relevant_chunks[:4])))
+        sources_used = sorted(list(set(f"{c['source']} (pag. {c['page']})" for c in relevant_chunks[:5])))
         reply_text += "\n\n📖 *Riferimenti estratti dalla tua libreria:* \n" + "\n".join([f"• _{s}_" for s in sources_used])
 
     try:
         await update.message.reply_text(reply_text, parse_mode='Markdown')
     except Exception:
-        # Fallback in caso di caratteri speciali Markdown non formattati
         await update.message.reply_text(reply_text, parse_mode=None)
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
