@@ -4,6 +4,8 @@ import logging
 import asyncio
 import pickle
 import re
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import List, Dict
 from dotenv import load_dotenv
 from telegram import Update
@@ -31,6 +33,25 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# Server HTTP per Health Check di Render Web Service (Free Tier)
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+    
+    def log_message(self, format, *args):
+        pass  # Silenzia i log dell'Health Check
+
+def start_health_check_server():
+    try:
+        port = int(os.getenv("PORT", "8080"))
+        server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+        logger.info(f"🌐 Server Health Check di Render attivo sulla porta {port}")
+        server.serve_forever()
+    except Exception as e:
+        logger.error(f"Errore avvio server Health Check: {e}")
 
 # Index dei libri
 library_index: List[Dict] = []
@@ -119,9 +140,7 @@ def index_pdf_books(folder_path: str, force_reindex: bool = False):
     except Exception as e:
         logger.error(f"Errore salvataggio cache: {e}")
 
-# DIZIONARIO MEDICO ORTOPEDICO E TRAUMATOLOGICO COMPLETO BILINGUE (ITALIANO <-> INGLESE)
 HIGH_SPECIFICITY_TERMS = {
-    # --- FEMORE E ANCA ---
     "femore": ["femur", "femoral", "femoral neck", "distal femur", "proximal femur", "shaft"],
     "femorale": ["femoral", "femur", "distal femur", "femoral condyle", "femoral neck"],
     "femorali": ["femoral", "femur", "condyles"],
@@ -140,8 +159,6 @@ HIGH_SPECIFICITY_TERMS = {
     "cotile": ["acetabulum", "acetabular", "judet", "letournel"],
     "acetabolo": ["acetabulum", "acetabular", "judet", "letournel"],
     "bacino": ["pelvis", "pelvic", "pelvic ring", "tile", "young-burgess"],
-
-    # --- TIBIA, PERONE E GINOCCHIO ---
     "tibia": ["tibia", "tibial", "tibial shaft", "distal tibia", "proximal tibia"],
     "tibiale": ["tibial", "tibia", "tibial plateau", "tibial spine", "tibial shaft"],
     "tibiali": ["tibial", "tibia", "plateau", "spines"],
@@ -163,8 +180,6 @@ HIGH_SPECIFICITY_TERMS = {
     "menischi": ["meniscus", "meniscal"],
     "root": ["root tear", "meniscal root"],
     "lfpb": ["mpfl", "patellofemoral"],
-
-    # --- CAVIGLIA E PIEDE ---
     "caviglia": ["ankle", "malleolar", "lauge-hansen", "weber"],
     "malleolo": ["malleolus", "malleolar", "bimalleolar", "trimalleolar", "weber"],
     "malleolare": ["malleolus", "malleolar", "weber"],
@@ -174,8 +189,6 @@ HIGH_SPECIFICITY_TERMS = {
     "lisfranc": ["lisfranc", "tarsometatarsal"],
     "chopart": ["chopart", "midtarsal"],
     "metatarso": ["metatarsal", "forefoot"],
-
-    # --- SPALLA E ARTO SUPERIORE ---
     "spalla": ["shoulder", "glenohumeral", "rotator cuff", "bankart", "hill-sachs"],
     "omero": ["humerus", "humeral", "proximal humerus", "humeral shaft", "distal humerus"],
     "omerale": ["humeral", "humerus", "proximal humerus"],
@@ -193,16 +206,12 @@ HIGH_SPECIFICITY_TERMS = {
     "scafoide": ["scaphoid", "carpal scaphoid"],
     "carpo": ["carpus", "carpal"],
     "metacarpo": ["metacarpal", "hand"],
-
-    # --- RACHIDE E COLONNA ---
     "colonna": ["spine", "spinal", "vertebra", "vertebral"],
     "rachide": ["spine", "spinal", "vertebral"],
     "cervicale": ["cervical", "cervical spine"],
     "dorsale": ["thoracic", "thoracic spine"],
     "lombare": ["lumbar", "lumbar spine"],
     "sacro": ["sacrum", "sacral", "sacroiliac"],
-
-    # --- TIPI DI FRATTURA E CLASSIFICAZIONI ---
     "frattura": ["fracture", "fractures", "broken"],
     "fratture": ["fracture", "fractures"],
     "esposta": ["open fracture", "gustilo", "anderson"],
@@ -249,17 +258,14 @@ def search_relevant_chunks(query: str, top_k: int = 10) -> List[Dict]:
             chunk_text = chunk["text"].lower()
             score = 0
             
-            # Punteggio base termini della query
             for word in query_words:
                 if len(word) > 3 and word in chunk_text:
                     score += 1
             
-            # Punteggio elevato per termini ortopedici bilingui specifici
             for spec_term in specific_keywords:
                 if spec_term in chunk_text:
                     score += 6
             
-            # Punteggio extra se il titolo del trattato corrisponde al distretto anatomico
             if any(k in query_clean for k in ["spine", "ginocchio", "knee", "lca", "menisco", "condilo"]):
                 if "insall" in book_title or "knee" in book_title or "brotzman" in book_title:
                     score += 3
@@ -390,6 +396,9 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Eccezione Telegram intercettata: {context.error}")
 
 def main():
+    # Avvia il server di Health Check per Render Web Service (Free Tier)
+    threading.Thread(target=start_health_check_server, daemon=True).start()
+
     print("📚 Caricamento libreria ortopedica...")
     index_pdf_books(BOOKS_DIR, force_reindex=False)
 
