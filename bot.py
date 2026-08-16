@@ -42,7 +42,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"OK")
     
     def log_message(self, format, *args):
-        pass  # Silenzia i log dell'Health Check
+        pass
 
 def start_health_check_server():
     try:
@@ -52,6 +52,9 @@ def start_health_check_server():
         server.serve_forever()
     except Exception as e:
         logger.error(f"Errore avvio server Health Check: {e}")
+
+# Memoria della conversazione per utente/chat (ultimi 4 messaggi per contesto)
+user_chat_history: Dict[int, List[Dict[str, str]]] = {}
 
 # Index dei libri
 library_index: List[Dict] = []
@@ -235,12 +238,19 @@ HIGH_SPECIFICITY_TERMS = {
     "weber": ["weber", "lauge-hansen"]
 }
 
-def search_relevant_chunks(query: str, top_k: int = 10) -> List[Dict]:
-    """Algoritmo di ricerca clinica bilingue ad alta precisione con supporto a tutte le regioni ortopediche."""
+def search_relevant_chunks(query: str, history: List[Dict[str, str]] = None, top_k: int = 10) -> List[Dict]:
+    """Algoritmo di ricerca clinica bilingue ad alta precisione con memoria del contesto di conversazione."""
     if not library_index:
         return []
     
-    query_clean = query.lower()
+    # Se esiste cronologia recente, combina la domanda precedente con quella attuale per non perdere il soggetto
+    combined_query = query
+    if history:
+        last_user_msgs = [m["content"] for m in history if m["role"] == "user"]
+        if last_user_msgs:
+            combined_query = f"{last_user_msgs[-1]} {query}"
+
+    query_clean = combined_query.lower()
     query_words = re.findall(r'\w+', query_clean)
     
     specific_keywords = set()
@@ -279,16 +289,25 @@ def search_relevant_chunks(query: str, top_k: int = 10) -> List[Dict]:
     scored_chunks.sort(key=lambda x: x[0], reverse=True)
     return [item[1] for item in scored_chunks[:top_k]]
 
-async def query_llm(prompt: str, context: str) -> str:
-    """Interrogazione asincrona al modello AI con retry automatico in caso di rate-limit."""
+async def query_llm(prompt: str, context: str, history: List[Dict[str, str]] = None) -> str:
+    """Interrogazione asincrona al modello AI con memoria del dialogo."""
     system_prompt = (
         "Sei un assistente esperto in Ortopedia e Traumatologia riservato a medici specializzandi.\n"
         "Rispondi al quesito clinico, teorico o di trattamento basandoti sul materiale allegato estratto dai libri e protocolli di ortopedia.\n"
+        "Tieni conto dell'intera conversazione precedente per comprendere i riferimenti impliciti (es. 'e per quanto riguarda il trattamento chirurgico?').\n"
         "Mantieni un tono medico professionale, chiaro, rigoroso e strutturato (es. Eziologia, Classificazione, Indicazioni Chirurgiche/Conservative).\n"
         "Se il testo allegato non contiene informazioni sufficienti, segnalalo chiaramente."
     )
     
-    user_content = f"### Estratti dai libri e protocolli di Ortopedia:\n{context}\n\n### Domanda dello specializzando:\n{prompt}"
+    user_content = f"### Estratti dai libri e protocolli di Ortopedia:\n{context}\n\n### Domanda attuale dello specializzando:\n{prompt}"
+
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    # Aggiunge gli ultimi scambi di messaggi per mantenere il filo del discorso
+    if history:
+        messages.extend(history[-4:])
+    
+    messages.append({"role": "user", "content": user_content})
 
     for attempt in range(3):
         try:
@@ -309,10 +328,7 @@ async def query_llm(prompt: str, context: str) -> str:
                 
                 response = await client.chat.completions.create(
                     model=model_name,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_content}
-                    ],
+                    messages=messages,
                     temperature=0.2,
                     max_tokens=1200
                 )
@@ -338,12 +354,14 @@ async def query_llm(prompt: str, context: str) -> str:
 
 # Handlers Telegram
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user_chat_history[chat_id] = []
     welcome_text = (
         "🩺 *Bot Ortopedia & Traumatologia Policlinico*\n\n"
-        "Benvenuto! Il bot è collegato alla tua libreria di testi e protocolli di ortopedia.\n\n"
-        "Puoi fare domande su trattamenti, classificazioni (AO, Schatzker, Neer, Rockwood, Garden, Pauwels, Meyers & McKeever), indicazioni chirurgiche e riabilitative.\n\n"
+        "Benvenuto! Il bot è collegato alla tua libreria di testi e protocolli di ortopedia ed ha la memoria della conversazione.\n\n"
+        "Puoi fare domande sequenziali ed approfondimenti sullo stesso caso clinico.\n\n"
         "📌 *Comandi disponibili:*\n"
-        "/start - Mostra questo messaggio\n"
+        "/start - Azzera la memoria conversazionale e ricomincia\n"
         "/libri - Elenco dei manuali e protocolli caricati\n"
         "/ricarica - Re-indicizza la cartella se hai aggiunto nuovi libri"
     )
@@ -368,11 +386,16 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
 
+    chat_id = update.effective_chat.id
     user_query = update.message.text
+
+    if chat_id not in user_chat_history:
+        user_chat_history[chat_id] = []
 
     await update.message.chat.send_action("typing")
 
-    relevant_chunks = search_relevant_chunks(user_query, top_k=10)
+    # Ricerca i paragrafi considerando la storia recente per capire il soggetto della domanda di approfondimento
+    relevant_chunks = search_relevant_chunks(user_query, history=user_chat_history[chat_id], top_k=10)
     
     if not relevant_chunks:
         context_str = "Nessun estratto trovato nei testi. Rispondi con la tua conoscenza generale ortopedica specificando che non c'è riscontro diretto nei testi della libreria."
@@ -381,7 +404,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for chunk in relevant_chunks:
             context_str += f"\n--- [Da: {chunk['source']} - Pagina {chunk['page']}] ---\n{chunk['text']}\n"
 
-    reply_text = await query_llm(user_query, context_str)
+    reply_text = await query_llm(user_query, context_str, history=user_chat_history[chat_id])
+
+    # Aggiorna la memoria del dialogo per la chat specifica
+    user_chat_history[chat_id].append({"role": "user", "content": user_query})
+    user_chat_history[chat_id].append({"role": "assistant", "content": reply_text})
+
+    if len(user_chat_history[chat_id]) > 10:
+        user_chat_history[chat_id] = user_chat_history[chat_id][-10:]
 
     if relevant_chunks:
         sources_used = sorted(list(set(f"{c['source']} (pag. {c['page']})" for c in relevant_chunks[:5])))
@@ -396,7 +426,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Eccezione Telegram intercettata: {context.error}")
 
 def main():
-    # Avvia il server di Health Check per Render Web Service (Free Tier)
     threading.Thread(target=start_health_check_server, daemon=True).start()
 
     print("📚 Caricamento libreria ortopedica...")
